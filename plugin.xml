@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<?eclipse version="3.0"?>
+<plugin>
+
+   <extension
+         id="application"
+         point="org.eclipse.core.runtime.applications">
+      <application>
+         <run
+               class="plugin.Application">
+         </run>
+      </application>
+   </extension>
+   <extension
+         point="org.eclipse.ui.perspectives">
+      <perspective
+            class="plugin.Perspective"
+            icon="icons/eclipse.gif"
+            id="VTKDemo.perspective"
+            name="VTK Demos">
+      </perspective>
+   </extension>
+   <extension
+         point="org.eclipse.ui.views">
+      <view
+            category="VTKDemo.category"
+            class="plugin.VTKLauncherView"
+            icon="icons/eclipse.gif"
+            id="VTKDemo.view"
+            name="VTK Demos">
+      </view>
+      <category
+            id="VTKDemo.category"
+            name="VTK"/>
+   </extension>
+   <extension
+         id="product"
+         point="org.eclipse.core.runtime.products">
+      <product
+            application="VTKDemo.application"
+            name="%productName">
+         <property
+               name="aboutImage"
+               value="icons/eclipse_lg.gif"/>
+         <property
+               name="aboutText"
+               value="%aboutText"/>
+         <property
+               name="windowImages"
+               value="icons/eclipse.gif,icons/eclipse32.gif"/>
+         <property
+               name="appName"
+               value="%productName">
+         </property>
+      </product>
+   </extension>
+   <extension
+         point="org.eclipse.ui.splashHandlers">
+      <splashHandler
+            class="plugin.SplashHandler"
+            id="VTKDemosRCP.splashHandler">
+      </splashHandler>
+      <splashHandlerProductBinding
+            productId="VTKDemo.product"
+            splashId="VTKDemosRCP.splashHandler">
+      </splashHandlerProductBinding>
+   </extension>
+
+</plugin>

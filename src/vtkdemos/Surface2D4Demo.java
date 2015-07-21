@@ -1,0 +1,611 @@
+/*
+ * Program to 
+ * Created on Sep 15, 2006
+ * By Kenneth Evans, Jr.
+ */
+
+package vtkdemos;
+
+import java.awt.BorderLayout;
+import java.awt.FlowLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.util.Random;
+
+import javax.swing.JButton;
+import javax.swing.JCheckBox;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+
+import utils.Axes;
+import utils.Histogram2D;
+import utils.VTKUtils;
+import vtk.vtkActor;
+import vtk.vtkCamera;
+import vtk.vtkContourFilter;
+import vtk.vtkDataSetMapper;
+import vtk.vtkDataSetReader;
+import vtk.vtkDataSetWriter;
+import vtk.vtkFloatArray;
+import vtk.vtkLookupTable;
+import vtk.vtkPanel;
+import vtk.vtkPoints;
+import vtk.vtkPolyDataMapper;
+import vtk.vtkProgrammableSource;
+import vtk.vtkRenderer;
+import vtk.vtkStructuredGrid;
+import vtk.vtkWarpScalar;
+import demolauncher.VTKDemo;
+
+public class Surface2D4Demo extends VTKDemo
+{
+  private static final int DEBUG_LEVEL = 0;
+  private static final boolean READ_INPUT = false;
+  private static final boolean USE_SOURCE = false;
+  protected int functionType = 0;
+  private static final boolean WRITE_OUTPUT = false;
+  protected String inputName = "Gaussian2D.txt";
+
+  private static String arrayName = "Scalars";
+  protected boolean useSource = USE_SOURCE;
+  protected boolean readInput = READ_INPUT;
+
+  private vtkRenderer renderer = null;
+  private vtkProgrammableSource source;
+  private vtkStructuredGrid sgrid0 = null;
+  private double xMax = -Double.MAX_VALUE;
+  private double xMin = Double.MAX_VALUE;
+  private double yMax = -Double.MAX_VALUE;
+  private double yMin = Double.MAX_VALUE;
+  private double zMax = -Double.MAX_VALUE;
+  private double zMin = Double.MAX_VALUE;
+
+  private static final boolean DO_SGRID0 = false;
+  private boolean doSgrid0 = DO_SGRID0;
+  private vtkActor sgrid0Actor = null;
+
+  private static final boolean DO_CONTOURS0 = true;
+  private boolean doContours0 = DO_CONTOURS0;
+  private vtkActor contours0Actor = null;
+
+  private static final boolean DO_SGRID1 = false;
+  private boolean doSgrid1 = DO_SGRID1;
+  private vtkActor sgrid1Actor = null;
+
+  private static final boolean DO_CONTOURS1 = false;
+  private boolean doContours1 = DO_CONTOURS1;
+  private vtkActor contours1Actor = null;
+
+  private static final boolean DO_AXES = true;
+  private boolean doAxes = DO_AXES;
+  private Axes axes = null;
+
+  public Surface2D4Demo() {
+    super();
+    setName("Surface 2D 4");
+  }
+
+  public String getInfo() {
+    String info = "This demo illustrates a 2D Gaussian\n"
+      + "using a vtkStructuredGrid.";
+    return info;
+  }
+
+  public void createPanel() {
+    if(created) return;
+
+    // Make a JPanel
+    JPanel panel = new JPanel();
+    BorderLayout layout = new BorderLayout();
+    panel.setLayout(layout);
+    setPanel(panel);
+
+    // Make a control panel and add it to the JPanel
+    JPanel controlPanel = createControlPanel();
+    panel.add(controlPanel, BorderLayout.SOUTH);
+
+    // Make a vtkPanel and add it to the JPanel
+    vtkPanel renWin = new vtkPanel();
+    panel.add(renWin, BorderLayout.CENTER);
+
+    // Get the renderer
+    renderer = renWin.GetRenderer();
+    renderer.SetBackground(1, 1, 1); // background color white
+
+    // Make a rainbow lookup table
+    vtkLookupTable lut = VTKUtils.getRainbowLookupTable();
+
+    // Create the structured grid dataset with the appropriate function
+    if(readInput) {
+      arrayName = "reader";
+      vtkDataSetReader reader = new vtkDataSetReader();
+      reader.SetFileName(inputName);
+      reader.Update();
+      sgrid0 = reader.GetStructuredGridOutput();
+    } else if(useSource) {
+      arrayName = "Source";
+      source = new vtkProgrammableSource();
+      source.SetExecuteMethod(this, "func");
+      // Update to calculate zMax, zMin
+      source.Update();
+      sgrid0 = source.GetStructuredGridOutput();
+    } else {
+      switch(functionType) {
+      case 0:
+        arrayName = "Gaussian2D";
+        sgrid0 = createGaussianData();
+        break;
+      case 1:
+        arrayName = "Gaussian2dDistribution";
+        sgrid0 = createDistributionData();
+        break;
+      }
+    }
+    double[] bounds = sgrid0.GetBounds();
+    if(xMin == Double.MAX_VALUE) xMin = bounds[0];
+    if(xMax == -Double.MAX_VALUE) xMax = bounds[1];
+    if(yMin == Double.MAX_VALUE) yMin = bounds[2];
+    if(yMax == -Double.MAX_VALUE) yMax = bounds[3];
+    double[] range = sgrid0.GetScalarRange();
+    if(zMin == Double.MAX_VALUE) zMin = range[0];
+    if(zMax == -Double.MAX_VALUE) zMax = range[1];
+    zMax = range[1];
+    zMin = range[0];
+    if(DEBUG_LEVEL > 0) {
+      System.out.println("sgrid0:");
+      if(readInput) {
+        System.out.println("readInput=" + readInput);
+        System.out.println("inputName=" + inputName);
+      } else if(useSource) {
+        System.out.println("useSource=" + useSource);
+      } else {
+        System.out.println("functionType=" + functionType);
+      }
+      System.out.println("arrayName=" + arrayName);
+      System.out.println("zMin,zMax=" + zMin + "," + zMax);
+      range = sgrid0.GetScalarRange();
+      System.out.println("ScalarRange=" + range[0] + "," + range[1]);
+      System.out.println("Bounds");
+      for(int i = 0; i < bounds.length; i++) {
+        System.out.println("  " + i + " " + bounds[i]);
+      }
+      System.out.print(sgrid0);
+    }
+    if(WRITE_OUTPUT) {
+      // Write the data
+      String fileName = arrayName + ".txt";
+      System.out.println("sgrid0:");
+      System.out.println("useSource=" + useSource);
+      System.out.println("functionType=" + functionType);
+      System.out.println("arrayName=" + arrayName);
+      System.out.println("Written to " + fileName);
+      vtkDataSetWriter writer = new vtkDataSetWriter();
+      writer.SetInput(sgrid0);
+      writer.SetFileName(fileName);
+
+      writer.Write();
+    }
+
+    // // sgrid0 //////////////////////////////////////////////////////////////
+
+    // Make a dataset mapper for sgrid0
+    vtkDataSetMapper sgrid0Mapper = new vtkDataSetMapper();
+    sgrid0Mapper.SetLookupTable(lut);
+    sgrid0Mapper.SetInput(sgrid0);
+    sgrid0Mapper.SetScalarRange(zMin, zMax);
+    // Color by another array (needs both of these)
+    // datasetMapper.SetScalarModeToUsePointFieldData();
+    // datasetMapper.ColorByArrayComponent("W", 0);
+    // datasetMapper.SetUseLookupTableScalarRange(1);
+    // datasetMapper.SetLookupTable(table1);
+    if(DEBUG_LEVEL > 1) {
+      sgrid0Mapper.Update();
+      System.out.println("sgrid0Mapper:");
+      System.out.println("zMin,zMax=" + zMin + "," + zMax);
+      System.out.print(sgrid0Mapper);
+    }
+
+    // Make the actor for the sgrid0 mapper
+    sgrid0Actor = new vtkActor();
+    sgrid0Actor.SetMapper(sgrid0Mapper);
+    sgrid0Actor.SetVisibility(doSgrid0 ? 1 : 0);
+    renderer.AddActor(sgrid0Actor);
+
+    // Make a contour filter for sgrid0
+    vtkContourFilter cont0Filter = new vtkContourFilter();
+    cont0Filter.SetInput(sgrid0);
+    cont0Filter.GenerateValues(10, zMin, zMax);
+
+    // Create a mapper for the sgrid0 contour filter
+    vtkPolyDataMapper cont0Mapper = new vtkPolyDataMapper();
+    cont0Mapper.SetLookupTable(lut);
+    cont0Mapper.SetInput(cont0Filter.GetOutput());
+    cont0Mapper.SetScalarRange(zMin, zMax);
+
+    // Make the actor for the sgrid0 contour filter
+    contours0Actor = new vtkActor();
+    contours0Actor.SetMapper(cont0Mapper);
+    contours0Actor.SetVisibility(doContours0 ? 1 : 0);
+    renderer.AddActor(contours0Actor);
+
+    // // sgrid1 //////////////////////////////////////////////////////////////
+
+    // Make sgrid1 by warping to a 2D surface
+    vtkWarpScalar warp = new vtkWarpScalar();
+    warp.SetInput(sgrid0);
+    double scale = (xMax - xMin) / (zMax - zMin);
+    warp.SetScaleFactor(scale);
+    vtkStructuredGrid sgrid1 = warp.GetStructuredGridOutput();
+
+    // Create a mapper for sgrid1
+    vtkDataSetMapper sgrid1Mapper = new vtkDataSetMapper();
+    sgrid1Mapper.SetLookupTable(lut);
+    sgrid1Mapper.SetInput(sgrid1);
+    sgrid1Mapper.SetScalarRange(zMin, zMax);
+
+    // Set the actor for the sgrid1 mapper
+    sgrid1Actor = new vtkActor();
+    sgrid1Actor.SetMapper(sgrid1Mapper);
+    sgrid1Actor.SetVisibility(doSgrid1 ? 1 : 0);
+    renderer.AddActor(sgrid1Actor);
+
+    // Make a contour filter for sgrid1
+    vtkContourFilter cont1Filter = new vtkContourFilter();
+    cont1Filter.SetInput(sgrid1);
+    cont1Filter.GenerateValues(10, zMin, zMax);
+
+    // Create a mapper for the sgrid1 contour filter
+    vtkPolyDataMapper cont1Mapper = new vtkPolyDataMapper();
+    cont1Mapper.SetLookupTable(lut);
+    cont1Mapper.SetInput(cont1Filter.GetOutput());
+    cont1Mapper.SetScalarRange(zMin, zMax);
+
+    // Make the actor for the sgrid1 contour filter
+    contours1Actor = new vtkActor();
+    contours1Actor.SetMapper(cont1Mapper);
+    contours1Actor.SetVisibility(doContours1 ? 1 : 0);
+    renderer.AddActor(contours1Actor);
+
+    // Set the camera
+    vtkCamera camera = new vtkCamera();
+    if(false) {
+      camera.SetClippingRange(1, 1000);
+      camera.SetFocalPoint(0, 0, 0);
+      camera.SetPosition(0, 0, 5);
+      camera.SetViewUp(0, 1, 0);
+      camera.Zoom(.8);
+    }
+    renderer.SetActiveCamera(camera);
+    renderer.ResetCamera();
+
+    // Add axes
+    axes = new Axes(3.5);
+    axes.setZScale(2);
+    axes.createActors();
+    axes.addActor(renderer);
+    axes.setCamera(camera);
+    axes.SetVisibility(doAxes ? 1 : 0);
+    renderer.ResetCamera();
+    if(DEBUG_LEVEL > 1) {
+      System.out.println("Renderer 0:");
+      System.out.println(renderer);
+      System.out.println("Camera 0:");
+      System.out.println(camera);
+    }
+
+    created = true;
+  }
+
+  public JPanel createControlPanel() {
+    JPanel controlPanel = new JPanel();
+    FlowLayout layout = new FlowLayout();
+    controlPanel.setLayout(layout);
+
+    if(false) {
+      JLabel label = new JLabel("Control Panel");
+      controlPanel.add(label);
+    }
+
+    // Reset
+    final JButton resetButton = new JButton("Reset");
+    controlPanel.add(resetButton);
+    resetButton.addActionListener(new ActionListener() {
+      public void actionPerformed(ActionEvent ev) {
+        vtkCamera camera = renderer.GetActiveCamera();
+        camera.SetViewUp(0, 1, 0);
+        camera.SetPosition(0, 0, 1);
+        camera.SetFocalPoint(0, 0, 0);
+        camera.SetViewAngle(30);
+        camera.SetClippingRange(.1, 1000);
+        camera.ComputeViewPlaneNormal();
+        renderer.ResetCamera();
+        // renderer.UpdateLightsGeometryToFollowCamera();
+        renderer.GetRenderWindow().Render();
+        if(DEBUG_LEVEL > 1) {
+          System.out.println("Renderer:");
+          System.out.println(renderer);
+          System.out.println("Camera:");
+          System.out.println(camera);
+        }
+      }
+    });
+
+    // Contours0
+    final JCheckBox contoursCheck0 = new JCheckBox();
+    contoursCheck0.setText("2D Contours");
+    contoursCheck0.setSelected(doContours0);
+    controlPanel.add(contoursCheck0);
+    contoursCheck0.addActionListener(new ActionListener() {
+      public void actionPerformed(ActionEvent ev) {
+        doContours0 = contoursCheck0.isSelected();
+        if(contours0Actor != null) {
+          contours0Actor.SetVisibility(doContours0 ? 1 : 0);
+          renderer.GetRenderWindow().Render();
+        }
+      }
+    });
+
+    // sgrid
+    final JCheckBox sgridCheck = new JCheckBox();
+    sgridCheck.setText("2D Colors");
+    sgridCheck.setSelected(doSgrid0);
+    controlPanel.add(sgridCheck);
+    sgridCheck.addActionListener(new ActionListener() {
+      public void actionPerformed(ActionEvent ev) {
+        doSgrid0 = sgridCheck.isSelected();
+        if(sgrid0Actor != null) {
+          sgrid0Actor.SetVisibility(doSgrid0 ? 1 : 0);
+          renderer.GetRenderWindow().Render();
+        }
+      }
+    });
+
+    // Contours1
+    final JCheckBox contoursCheck1 = new JCheckBox();
+    contoursCheck1.setText("3D Contours");
+    contoursCheck1.setSelected(doContours1);
+    controlPanel.add(contoursCheck1);
+    contoursCheck1.addActionListener(new ActionListener() {
+      public void actionPerformed(ActionEvent ev) {
+        doContours1 = contoursCheck1.isSelected();
+        if(contours1Actor != null) {
+          contours1Actor.SetVisibility(doContours1 ? 1 : 0);
+          renderer.GetRenderWindow().Render();
+        }
+      }
+    });
+
+    // sgrid1
+    final JCheckBox sgrid1Check = new JCheckBox();
+    sgrid1Check.setText("3D Colors");
+    sgrid1Check.setSelected(doSgrid1);
+    controlPanel.add(sgrid1Check);
+    sgrid1Check.addActionListener(new ActionListener() {
+      public void actionPerformed(ActionEvent ev) {
+        doSgrid1 = sgrid1Check.isSelected();
+        if(sgrid1Actor != null) {
+          sgrid1Actor.SetVisibility(doSgrid1 ? 1 : 0);
+          renderer.GetRenderWindow().Render();
+        }
+      }
+    });
+
+    // Axes
+    final JCheckBox axesCheck = new JCheckBox();
+    axesCheck.setSelected(doAxes);
+    axesCheck.setText("Axes");
+    controlPanel.add(axesCheck);
+    axesCheck.addActionListener(new ActionListener() {
+      public void actionPerformed(ActionEvent ev) {
+        doAxes = axesCheck.isSelected();
+        if(axes != null) {
+          axes.SetVisibility(doAxes ? 1 : 0);
+          renderer.GetRenderWindow().Render();
+        }
+      }
+    });
+
+    return controlPanel;
+  }
+
+  /**
+   * The function for the programmable source.
+   */
+  public void func() {
+    // Create the structured grid
+    int nPoints1 = 100;
+    int nPoints2 = 100;
+    vtkStructuredGrid output = source.GetStructuredGridOutput();
+    if(DEBUG_LEVEL > 2) {
+      System.out.println("source original output");
+      System.out.println("GetDataObjectType: " + output.GetDataObjectType());
+      int[] ival = output.GetDimensions();
+      System.out.println("GetDimensions: " + ival[0] + "," + ival[1] + ","
+        + ival[2]);
+      System.out.println(output);
+    }
+    output.SetDimensions(nPoints1, nPoints2, 1);
+
+    // Make arrays for vectors, scalars, and points
+    vtkFloatArray sArray = new vtkFloatArray();
+    sArray.SetNumberOfComponents(1);
+    sArray.SetName(arrayName);
+
+    vtkPoints points = new vtkPoints();
+
+    double a1 = 3;
+    double sigma1 = .5;
+    double mean1 = 0;
+    double upper1 = 3.0;
+    double lower1 = -3.0;
+    double delta1 = (upper1 - lower1) / (nPoints1 - 1);
+
+    double a2 = 1;
+    double sigma2 = 2.0;
+    double mean2 = 0;
+    double upper2 = 3.0;
+    double lower2 = -3.0;
+    double delta2 = (upper2 - lower2) / (nPoints2 - 1);
+
+    double x, y, z, arg1, arg2;
+    for(int j = 0; j < nPoints2; j++) {
+      y = lower2 + delta2 * j;
+      arg2 = (y - mean2) / sigma2;
+      for(int i = 0; i < nPoints1; i++) {
+        x = lower1 + delta1 * i;
+        arg1 = (x - mean1) / sigma1;
+        z = a1 * Math.exp(-.5 * arg1 * arg1) * a2 * Math.exp(-.5 * arg2 * arg2);
+        if(x > xMax) xMax = x;
+        if(x < xMin) xMin = x;
+        if(y > yMax) yMax = y;
+        if(y < yMin) yMin = y;
+        if(z > zMax) zMax = z;
+        if(z < zMin) zMin = z;
+        points.InsertNextPoint(x, y, 0);
+        sArray.InsertNextTuple1(z);
+      }
+    }
+
+    // Reset
+    zMax = a1 * a2;
+    zMin = 0;
+
+    output.SetPoints(points);
+    output.GetPointData().AddArray(sArray);
+    output.GetPointData().SetActiveScalars(arrayName);
+  }
+
+  protected vtkStructuredGrid createGaussianData() {
+    // Create the structured grid
+    int nPoints1 = 100;
+    int nPoints2 = 100;
+    vtkStructuredGrid sgrid = new vtkStructuredGrid();
+    sgrid.SetDimensions(nPoints1, nPoints2, 1);
+
+    // Make arrays for vectors, scalars, and points
+    vtkFloatArray gArray = new vtkFloatArray();
+    gArray.SetNumberOfComponents(1);
+    gArray.SetName(arrayName);
+
+    // Note that it would be better to use SetNumberOfValues here, then use
+    // SetValue instead of SetNextValue (or equivalent) below. This causes only
+    // one memory allocation and may avoid excess memory allocation.
+
+    vtkPoints points = new vtkPoints();
+
+    double a1 = 3;
+    double sigma1 = .5;
+    double mean1 = 0;
+    double upper1 = 3.0;
+    double lower1 = -3.0;
+    double delta1 = (upper1 - lower1) / (nPoints1 - 1);
+
+    double a2 = 1;
+    double sigma2 = 2.0;
+    double mean2 = 0;
+    double upper2 = 3.0;
+    double lower2 = -3.0;
+    double delta2 = (upper2 - lower2) / (nPoints2 - 1);
+
+    double x, y, z, arg1, arg2;
+    for(int j = 0; j < nPoints2; j++) {
+      y = lower2 + delta2 * j;
+      arg2 = (y - mean2) / sigma2;
+      for(int i = 0; i < nPoints1; i++) {
+        x = lower1 + delta1 * i;
+        arg1 = (x - mean1) / sigma1;
+        z = a1 * Math.exp(-.5 * arg1 * arg1) * a2 * Math.exp(-.5 * arg2 * arg2);
+        if(x > xMax) xMax = x;
+        if(x < xMin) xMin = x;
+        if(y > yMax) yMax = y;
+        if(y < yMin) yMin = y;
+        if(z > zMax) zMax = z;
+        if(z < zMin) zMin = z;
+        // Note that this inserts at the end. If the memory is allocated via
+        // SetNumberOf Points or SetNumberOfValues, then this inserts it beyond
+        // that. That is, it increases the existing memory storage by 1.
+        points.InsertNextPoint(x, y, 0);
+        // For 1 component could equivalently use InsertNextTuple or
+        // InsertNextValue. They do the same thing.
+        gArray.InsertNextTuple1(z);
+      }
+    }
+
+    // Reset
+    zMax = a1 * a2;
+    zMin = 0;
+
+    sgrid.SetPoints(points);
+    sgrid.GetPointData().AddArray(gArray);
+    sgrid.GetPointData().SetActiveScalars(arrayName);
+
+    return sgrid;
+  }
+
+  protected vtkStructuredGrid createDistributionData() {
+    // Create the structured grid
+    int nPoints1 = 100;
+    int nPoints2 = 100;
+    vtkStructuredGrid sgrid = new vtkStructuredGrid();
+    sgrid.SetDimensions(nPoints1, nPoints2, 1);
+
+    // Make arrays for vectors, scalars, and points
+    vtkFloatArray gArray = new vtkFloatArray();
+    gArray.SetNumberOfComponents(1);
+    gArray.SetName(arrayName);
+
+    vtkPoints points = new vtkPoints();
+    // double a1 = 3;
+    double sigma1 = .5;
+    // double mean1 = 0;
+    double upper1 = 3.0;
+    double lower1 = -3.0;
+    double delta1 = (upper1 - lower1) / (nPoints1 - 1);
+
+    // double a2 = 1;
+    double sigma2 = 2.0;
+    // double mean2 = 0;
+    double upper2 = 3.0;
+    double lower2 = -3.0;
+    double delta2 = (upper2 - lower2) / (nPoints2 - 1);
+
+    // Define range data
+    int nRandom = 100000;
+    Histogram2D hist = new Histogram2D("hist", nPoints1, lower1, upper1,
+      nPoints2, lower2, upper2);
+    Random r = new Random();
+    for(int i = 0; i < nRandom; i++) {
+      hist.fill(sigma1 * r.nextGaussian(), sigma2 * r.nextGaussian());
+    }
+    double[][] cellVals = hist.getCellVals();
+    double x, y, z;
+    // double arg1, arg2;
+    for(int j = 0; j < nPoints2; j++) {
+      y = lower2 + delta2 * j;
+      // arg2 = (y - mean2) / sigma2;
+      for(int i = 0; i < nPoints1; i++) {
+        x = lower1 + delta1 * i;
+        // arg1 = (x - mean1) / sigma1;
+        z = cellVals[i][j];
+        if(x > xMax) xMax = x;
+        if(x < xMin) xMin = x;
+        if(y > yMax) yMax = y;
+        if(y < yMin) yMin = y;
+        if(z > zMax) zMax = z;
+        if(z < zMin) zMin = z;
+        points.InsertNextPoint(x, y, 0);
+        gArray.InsertNextTuple1(z);
+      }
+    }
+
+    // Reset
+    zMin = 0;
+
+    sgrid.SetPoints(points);
+    sgrid.GetPointData().AddArray(gArray);
+    sgrid.GetPointData().SetActiveScalars(arrayName);
+
+    return sgrid;
+  }
+
+}
